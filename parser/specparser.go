@@ -8,9 +8,12 @@ package parser
 
 import (
 	"bufio"
+	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/getgauge/gauge/gauge"
+	"github.com/getgauge/gauge/logger"
 )
 
 // SpecParser is responsible for parsing a Specification. It delegates to respective processors composed sub-entities
@@ -22,6 +25,18 @@ type SpecParser struct {
 	processors        map[gauge.TokenKind]func(*SpecParser, *Token) ([]error, bool)
 	conceptDictionary *gauge.ConceptDictionary
 }
+
+type PrioritizedScenarios struct {
+	priority     int
+	scenarioList []*gauge.Scenario
+}
+
+// Add filtering metods to PrioritizedScenarios list, using Sort
+type ByPriority []*PrioritizedScenarios
+
+func (a ByPriority) Len() int           { return len(a) }
+func (a ByPriority) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
+func (a ByPriority) Less(i, j int) bool { return a[i].priority < a[j].priority }
 
 // Parse generates tokens for the given spec text and creates the specification.
 func (parser *SpecParser) Parse(specText string, conceptDictionary *gauge.ConceptDictionary, specFile string) (*gauge.Specification, *ParseResult, error) {
@@ -87,6 +102,65 @@ func (parser *SpecParser) createSpecification(tokens []*Token, specFile string) 
 			}
 		}
 	}
+	// For each priority flag we find, we should create a scenario list associated to this priority level, these lists are pushed in prioritizedScenariosList
+	// On the other side, we fill nonPrioritizedScenarios with the scenarios without priority flag
+	prioritizedScenariosList := []*PrioritizedScenarios{}
+	nonPrioritizedScenarios := []*gauge.Scenario{}
+	for _, scenario := range specification.Scenarios {
+		scenarioPriority := -1
+		// We look for scenarios with priority level tags
+		for _, tag := range scenario.Tags.RawValues[0] {
+			if strings.Contains(tag, "Priority") {
+				priority, err := strconv.Atoi(strings.SplitAfter(tag, "Priority")[1])
+				if err != nil {
+					logger.Warningf(true, "Unable to get priority level from tag: %s", tag)
+					break
+				}
+				if priority >= 0 {
+					logger.Debugf(true, "Scenario: %s has Priority level: %d", scenario.Heading.Value, priority)
+					if scenarioPriority == -1 {
+						// If not priority level has been set before to this scenario, we should do it now
+						scenarioPriority = priority
+					} else if priority < scenarioPriority {
+						// By default we stick to the highest priority level
+						scenarioPriority = priority
+					}
+				}
+			}
+		}
+		if scenarioPriority != -1 {
+			// Push this scenario to its associated scenario list, if the list exists
+			prioritizedScenariosFound := false
+			for _, prioritizedScenarios := range prioritizedScenariosList {
+				if prioritizedScenarios.priority == scenarioPriority {
+					prioritizedScenariosFound = true
+					prioritizedScenarios.scenarioList = append(prioritizedScenarios.scenarioList, scenario)
+					break
+				}
+			}
+			if !prioritizedScenariosFound {
+				// Create the prioritized list, if the list does not exist
+				prioritizedScenarios := new(PrioritizedScenarios)
+				prioritizedScenarios.priority = scenarioPriority
+				prioritizedScenarios.scenarioList = append(prioritizedScenarios.scenarioList, scenario)
+				prioritizedScenariosList = append(prioritizedScenariosList, prioritizedScenarios)
+			}
+
+		} else { // Add this scenario to nonPrioritizedScenarios if not priority flag has been found
+			nonPrioritizedScenarios = append(nonPrioritizedScenarios, scenario)
+		}
+	}
+	// Filter list of list of Scenarios by priority level
+	sort.Sort(ByPriority(prioritizedScenariosList))
+	// We create a brand new, empty scenario list for the specification
+	specification.Scenarios = []*gauge.Scenario{}
+	for _, prioritizedScenarios := range prioritizedScenariosList {
+		// Fill the specification scenario list, starting with the prioritized ones
+		// Note: Priority levels are respected because the list has been sorted by priority level
+		specification.Scenarios = append(specification.Scenarios, prioritizedScenarios.scenarioList...)
+	}
+	// Append nonPrioritizedScenarios to this list
+	specification.Scenarios = append(specification.Scenarios, nonPrioritizedScenarios...)
 	if len(specification.Scenarios) > 0 {
 		specification.LatestScenario().Span.End = tokens[len(tokens)-1].LineNo
 	}
