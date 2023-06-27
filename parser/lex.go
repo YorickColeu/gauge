@@ -166,7 +166,11 @@ func (parser *SpecParser) isTagEndingWithComma(text string) bool {
 
 func (parser *SpecParser) isSpecHeading(text string) bool {
 	if len(text) > 1 {
-		return text[0] == '#' && text[1] != '#'
+		if text[0] == '#' {
+			return text[1] != '#'
+		} else if text[0] == 't' && text[1] == 'i' && text[2] == 't' && text[3] == 'l' && text[4] == 'e' && text[5] == ':' {
+			return true
+		}
 	}
 	return text[0] == '#'
 }

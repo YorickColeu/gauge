@@ -6,7 +6,9 @@
 
 package parser
 
-import "strconv"
+import (
+	"strconv"
+)
 
 func isInState(currentState int, statesToCheck ...int) bool {
 	var mask int
@@ -42,7 +44,16 @@ func addStates(currentState *int, states ...int) {
 }
 
 func isUnderline(text string, underlineChar rune) bool {
-	if len(text) == 0 || rune(text[0]) != underlineChar {
+	// This is a workaround to support YAML data in markdown file
+	// YAML header in markdown files are used mostly for pandoc
+	// Note: This trig a bug, tables with three dash long column line
+	// 	representation are note correclty handled, example:
+	// 	| A | B |
+	// 	|---|---|
+	// 	| a | 1 |
+	// 	| b | 2 |
+	// 	| c | 3 |
+	if len(text) == 0 || rune(text[0]) != underlineChar || text == "---" {
 		return false
 	}
 	for _, value := range text {
