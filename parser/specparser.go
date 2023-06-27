@@ -109,21 +109,23 @@ func (parser *SpecParser) createSpecification(tokens []*Token, specFile string) 
 	for _, scenario := range specification.Scenarios {
 		scenarioPriority := -1
 		// We look for scenarios with priority level tags
-		for _, tag := range scenario.Tags.RawValues[0] {
-			if strings.Contains(tag, "Priority") {
-				priority, err := strconv.Atoi(strings.SplitAfter(tag, "Priority")[1])
-				if err != nil {
-					logger.Warningf(true, "Unable to get priority level from tag: %s", tag)
-					break
-				}
-				if priority >= 0 {
-					logger.Debugf(true, "Scenario: %s has Priority level: %d", scenario.Heading.Value, priority)
-					if scenarioPriority == -1 {
-						// If not priority level has been set before to this scenario, we should do it now
-						scenarioPriority = priority
-					} else if priority < scenarioPriority {
-						// By default we stick to the highest priority level
-						scenarioPriority = priority
+		if scenario.Tags != nil {
+			for _, tag := range scenario.Tags.RawValues[0] {
+				if strings.Contains(tag, "Priority") {
+					priority, err := strconv.Atoi(strings.SplitAfter(tag, "Priority")[1])
+					if err != nil {
+						logger.Warningf(true, "Unable to get priority level from tag: %s", tag)
+						break
+					}
+					if priority >= 0 {
+						logger.Debugf(true, "Scenario: %s has Priority level: %d", scenario.Heading.Value, priority)
+						if scenarioPriority == -1 {
+							// If not priority level has been set before to this scenario, we should do it now
+							scenarioPriority = priority
+						} else if priority < scenarioPriority {
+							// By default we stick to the highest priority level
+							scenarioPriority = priority
+						}
 					}
 				}
 			}
